@@ -49,7 +49,9 @@ class LayerNormalization(nn.Module):
         std = x.std(dim =-1,keepdim=True)
         return self.weight*(x-mean)/(std+self.eps)+self.bias
 
-#feed forward layer solves overfitting, makes neurons not rely to heavily on any pathway
+#feed forward layer: after attention has mixed information between tokens, this runs on each token
+#separately (expand dim -> d_ff, relu, shrink back to dim) so the model can process what it gathered
+#the dropout inside is what helps with overfitting, it stops neurons relying too heavily on any pathway
 class FeedForwardBlock(nn.Module):
     def __init__(self,dim:int,d_ff:int,dropout:float):
         super().__init__()
@@ -119,8 +121,54 @@ class ResidualConnection(nn.Module):
     def __init__(self,dropout: float):
         super().__init__()
         self.dropout = nn.Dropout(dropout)
-        self._norm = LayerNormalization()
+        self.norm = LayerNormalization()
 
     def forward(self, x, sublayer):
         return x + self.dropout(sublayer(self.norm(x)))
 
+class DecoderBlock(nn.Module):
+    def __init__(self,dim:int,h:int,d_ff:int,dropout:float,seq_len:int):
+        super().__init__()
+
+        self.attention = MultiHeadAttentionBlock(dim,h,dropout)
+        self.feed_forward = FeedForwardBlock(dim,d_ff,dropout)
+        self.attention_wrapper = ResidualConnection(dropout)
+        self.feed_forward_wrapper = ResidualConnection(dropout)
+
+        #causal mask of shape (1,1,seq_len,seq_len): lower triangle of 1s, so token i can only see tokens <= i
+        mask = torch.tril(torch.ones(seq_len,seq_len)).unsqueeze(0).unsqueeze(0)
+        self.register_buffer("mask",mask)
+
+    def forward(self, x):
+        #x is (batch, T, dim), T can be shorter than seq_len so we cut the mask down to (T,T)
+        T = x.shape[1]
+        mask = self.mask[:,:,:T,:T]
+        #self attention: q, k and v all come from the same x
+        x = self.attention_wrapper(x, lambda x: self.attention(x,x,x,mask))
+        x = self.feed_forward_wrapper(x, self.feed_forward)
+        return x
+
+# the whole gpt: embed the tokens, add position info, run through a stack of
+# decoder blocks, then project back to vocab_size so every token gets a score
+# (logits) for what the next token should be
+class Transformer(nn.Module):
+    def __init__(self, vocab_size:int=65, seq_len:int=256, dim:int=256, n_layers:int=6, h:int=8, d_ff:int=1024, dropout:float=0.1)->None:
+        super().__init__()
+        self.embed = InputEmbeddings(dim,vocab_size)
+        self.pos = PositionalEncoding(seq_len,dropout,dim)
+        self.blocks = nn.ModuleList([DecoderBlock(dim,h,d_ff,dropout,seq_len) for _ in range(n_layers)])
+        #residual connections normalize before each sublayer, so the last block's output needs one more norm
+        self.norm = LayerNormalization()
+        self.projection = nn.Linear(dim,vocab_size)
+
+        #xavier init on the weight matrices (skips 1d params like biases and the layer norm)
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
+
+    #x is token ids of shape (batch, T), returns logits of shape (batch, T, vocab_size)
+    def forward(self, x):
+        x = self.pos(self.embed(x))
+        for block in self.blocks:
+            x = block(x)
+        return self.projection(self.norm(x))
