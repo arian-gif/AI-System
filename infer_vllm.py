@@ -13,7 +13,9 @@ from vllm import LLM, SamplingParams
 PROMPT = "To be, or not to be, that is the"
 MAX_NEW_TOKENS = 40
 
-llm = LLM(model="gpt2")  # downloads gpt2 (~500MB) from HuggingFace the first time
+#"gpt2" alone is rejected by newer huggingface_hub versions - HF renamed the repo
+#under the openai-community namespace, so the full id is required now
+llm = LLM(model="openai-community/gpt2")  # downloads gpt2 (~500MB) from HuggingFace the first time
 params = SamplingParams(temperature=0.8, top_p=0.95, max_tokens=MAX_NEW_TOKENS, logprobs=5)
 
 [output] = llm.generate([PROMPT], params)
