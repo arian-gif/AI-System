@@ -21,7 +21,10 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 #"gpt2" alone is rejected by newer huggingface_hub versions - HF renamed the repo
 #under the openai-community namespace, so the full id is required now
 tokenizer = GPT2TokenizerFast.from_pretrained("openai-community/gpt2")
-model = GPT2LMHeadModel.from_pretrained("openai-community/gpt2").to(device).eval()
+#transformers defaults to the fused "sdpa" attention kernel, which is faster but never
+#materializes attention weights - output_attentions=True is silently ignored unless we
+#force the older "eager" implementation that actually computes and returns them
+model = GPT2LMHeadModel.from_pretrained("openai-community/gpt2", attn_implementation="eager").to(device).eval()
 
 n_layers = model.config.n_layer  # 12
 n_heads = model.config.n_head  # 12
