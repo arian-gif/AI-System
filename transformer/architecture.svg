@@ -1,0 +1,70 @@
+<svg viewBox="0 0 380 760" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#222" />
+    </marker>
+  </defs>
+
+  <!-- output probabilities -->
+  <text x="190" y="30" text-anchor="middle" font-size="14">Output</text>
+  <text x="190" y="46" text-anchor="middle" font-size="14">Probabilities</text>
+  <line x1="190" y1="112" x2="190" y2="60" stroke="#222" stroke-width="1.5" marker-end="url(#arrow)" />
+
+  <!-- softmax -->
+  <rect x="130" y="115" width="120" height="35" rx="6" fill="#d5e8d4" stroke="#82b366" />
+  <text x="190" y="137" text-anchor="middle" font-size="13">Softmax</text>
+  <line x1="190" y1="163" x2="190" y2="150" stroke="#222" stroke-width="1.5" marker-end="url(#arrow)" />
+
+  <!-- linear -->
+  <rect x="130" y="165" width="120" height="35" rx="6" fill="#e1d5e7" stroke="#9673a6" />
+  <text x="190" y="187" text-anchor="middle" font-size="13">Linear</text>
+  <line x1="190" y1="243" x2="190" y2="200" stroke="#222" stroke-width="1.5" marker-end="url(#arrow)" />
+
+  <!-- Nx container -->
+  <rect x="90" y="245" width="200" height="300" rx="10" fill="#fafafa" stroke="#999" />
+  <path d="M 68 245 L 58 245 L 58 545 L 68 545" fill="none" stroke="#666" stroke-width="1.2" />
+  <text x="48" y="400" text-anchor="middle" font-size="14">N&#215;</text>
+
+  <!-- add & norm 2 -->
+  <rect x="110" y="270" width="160" height="30" rx="6" fill="#fff2cc" stroke="#d6b656" />
+  <text x="190" y="290" text-anchor="middle" font-size="12">Add &amp; Norm</text>
+  <line x1="190" y1="328" x2="190" y2="300" stroke="#222" stroke-width="1.5" marker-end="url(#arrow)" />
+
+  <!-- feed forward -->
+  <rect x="110" y="330" width="160" height="50" rx="6" fill="#dae8fc" stroke="#6c8ebf" />
+  <text x="190" y="350" text-anchor="middle" font-size="13">Feed</text>
+  <text x="190" y="367" text-anchor="middle" font-size="13">Forward</text>
+  <line x1="190" y1="408" x2="190" y2="380" stroke="#222" stroke-width="1.5" marker-end="url(#arrow)" />
+
+  <!-- add & norm 1 -->
+  <rect x="110" y="410" width="160" height="30" rx="6" fill="#fff2cc" stroke="#d6b656" />
+  <text x="190" y="430" text-anchor="middle" font-size="12">Add &amp; Norm</text>
+  <line x1="190" y1="468" x2="190" y2="440" stroke="#222" stroke-width="1.5" marker-end="url(#arrow)" />
+
+  <!-- masked multi-head attention -->
+  <rect x="110" y="470" width="160" height="50" rx="6" fill="#ffe6cc" stroke="#d79b00" />
+  <text x="190" y="490" text-anchor="middle" font-size="12">Masked Multi-Head</text>
+  <text x="190" y="507" text-anchor="middle" font-size="12">Attention</text>
+
+  <!-- residual skip lines -->
+  <path d="M 270 520 C 305 520 305 425 270 425" fill="none" stroke="#222" stroke-width="1.3" marker-end="url(#arrow)" />
+  <path d="M 270 380 C 305 380 305 285 270 285" fill="none" stroke="#222" stroke-width="1.3" marker-end="url(#arrow)" />
+
+  <!-- positional encoding -->
+  <line x1="190" y1="558" x2="190" y2="520" stroke="#222" stroke-width="1.5" marker-end="url(#arrow)" />
+  <circle cx="190" cy="575" r="15" fill="#fff" stroke="#222" stroke-width="1.3" />
+  <text x="190" y="580" text-anchor="middle" font-size="16">+</text>
+  <path d="M 214 575 h -8" fill="none" stroke="#222" stroke-width="1.2" />
+  <path d="M 214 578 q 4 -6 8 0 q 4 6 8 0" fill="none" stroke="#222" stroke-width="1.2" />
+  <text x="290" y="570" text-anchor="middle" font-size="12">Positional</text>
+  <text x="290" y="584" text-anchor="middle" font-size="12">Encoding</text>
+  <line x1="190" y1="605" x2="190" y2="590" stroke="#222" stroke-width="1.5" />
+
+  <!-- output embedding -->
+  <rect x="110" y="605" width="160" height="45" rx="6" fill="#f8cecc" stroke="#b85450" />
+  <text x="190" y="622" text-anchor="middle" font-size="13">Output</text>
+  <text x="190" y="639" text-anchor="middle" font-size="13">Embedding</text>
+  <line x1="190" y1="697" x2="190" y2="655" stroke="#222" stroke-width="1.5" marker-end="url(#arrow)" />
+
+  <text x="190" y="712" text-anchor="middle" font-size="13">Outputs</text>
+</svg>
