@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inference viewer</title>
+<style>
+  :root { --bg:#12141a; --panel:#1b1e27; --line:#2b2f3b; --text:#e6e8ee; --dim:#8b91a1; --good:#5fd38d; --bad:#ff7a7a; --accent:#6aa9ff; --prompt:#252a36; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui, sans-serif; }
+  header { position:sticky; top:0; z-index:5; background:var(--bg); border-bottom:1px solid var(--line); padding:12px 20px; display:flex; flex-wrap:wrap; gap:14px; align-items:center; }
+  header h1 { font-size:16px; margin:0; }
+  #slider { flex:1; min-width:200px; }
+  button, select { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 12px; font:inherit; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.on { background:var(--accent); color:#0b0d12; border-color:var(--accent); }
+  main { max-width:1300px; margin:0 auto; padding:16px 20px 60px; }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:16px; }
+  h2 { font-size:15px; margin:0 0 2px; }
+  .hint { color:var(--dim); margin:0 0 12px; font-size:13px; }
+  .mono { font-family:ui-monospace, Consolas, monospace; }
+  #stats { color:var(--dim); }
+  #stats b { color:var(--text); }
+
+  #tokwrap { display:flex; gap:4px; overflow-x:auto; padding-bottom:6px; flex-wrap:wrap; }
+  .tok { min-width:34px; text-align:center; cursor:pointer; border-radius:6px; padding:3px 4px; background:var(--prompt); }
+  .tok.gen { background:#20304a; }
+  .tok:hover { outline:1px solid var(--line); }
+  .tok.sel { outline:2px solid var(--accent); }
+  .tok .pred { font-size:11px; }
+  .tok .pred.ok { color:var(--good); }
+  .tok .pred.bad { color:var(--bad); }
+  .tok .pred.wait { color:var(--dim); }
+  #legend { display:flex; gap:16px; color:var(--dim); font-size:12px; margin-bottom:8px; }
+  #legend span::before { content:"\25a0"; margin-right:5px; }
+  #legend .p::before { color:var(--prompt); text-shadow:0 0 0 1px var(--line); }
+  #legend .g::before { color:#20304a; }
+  #info { margin-top:10px; color:var(--dim); }
+  #info b { color:var(--text); }
+
+  .grid { display:grid; gap:12px; }
+  #stages { grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); }
+  #heads { grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); }
+  .card h4 { margin:0 0 4px; font-size:12px; color:var(--dim); font-weight:600; }
+  .rel { position:relative; }
+  .rel canvas { width:100%; display:block; image-rendering:pixelated; border-radius:4px; }
+  .rowhl { position:absolute; left:0; right:0; border:1px solid #fff; pointer-events:none; }
+  #layers { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  #layerdetail { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  #neuroncv { width:100%; image-rendering:pixelated; border-radius:4px; }
+  @media (max-width:800px) { #layerdetail { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Inference viewer</h1>
+  <button id="play">Play</button>
+  <input id="slider" type="range" min="0" value="0">
+  <select id="speed">
+    <option value="1200">slow</option>
+    <option value="600" selected>normal</option>
+    <option value="250">fast</option>
+  </select>
+  <span id="stats" class="mono"></span>
+</header>
+
+<main>
+  <section>
+    <h2>Generation, one token at a time</h2>
+    <p class="hint">The prompt (dim background) plus everything generated so far (blue background). Under each token is the model's top guess for the NEXT token: green if it matches what actually comes next, red if not. The rightmost token has no "next" yet - that's the one about to be generated. Click any token to inspect it below. Note: because of the causal mask, a token's prediction only depends on what comes before it, so the prompt's predictions never change as generation continues - only new tokens get added to the right.</p>
+    <div id="tokwrap"></div>
+    <div id="info"></div>
+  </section>
+
+  <section>
+    <h2>What each layer outputs</h2>
+    <p class="hint">One picture per stage: the embedding + position, then the output of each of the 12 blocks. Every row is one token in the sequence and every column is one of its 768 numbers (blue = negative, orange = positive). The white box is the token you clicked. Watch how the representation changes layer to layer, and how new rows appear as tokens are generated.</p>
+    <div id="stages" class="grid"></div>
+  </section>
+
+  <section>
+    <h2>Inside one block: attention and neurons</h2>
+    <p class="hint">Pick a block. Left: every attention head, row = the token doing the looking, column = the token it looks at, brighter = more attention (triangular, since a token can't look ahead). Right: the 3072 neurons in that block's feed-forward layer, reshaped into a grid, showing how strongly each one fires for the token about to be generated - this is the most literal "lighting up" view of the model.</p>
+    <div id="layers"></div>
+    <div id="layerdetail">
+      <div>
+        <h4 class="mono" style="color:var(--dim)">attention heads</h4>
+        <div id="heads" class="grid"></div>
+      </div>
+      <div class="card">
+        <h4>neuron activations (48 x 64 grid of 3072 neurons)</h4>
+        <canvas id="neuroncv"></canvas>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const DATA = __DATA__;
+const D = DATA.dim, H = DATA.heads, LAYERS = DATA.layers, snaps = DATA.snaps, promptLen = DATA.prompt_len;
+//lay the d_ff neurons out as a grid roughly as wide as it is tall, whatever d_ff turns out to be
+const NCOLS = Math.round(Math.sqrt(DATA.d_ff * 4 / 3));
+const NROWS = Math.ceil(DATA.d_ff / NCOLS);
+let idx = 0, sel = 0, layer = 0, timer = null;
+
+const pct = p => (p * 100).toFixed(p < 0.1 ? 1 : 0) + "%";
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+// ---- colors ----------------------------------------------------------------
+const BASE = [20, 22, 30];
+const mix = (a, b, t) => a.map((x, i) => Math.round(x + (b[i] - x) * t));
+const makeLUT = fn => Array.from({ length: 256 }, (_, v) => fn(v / 255));
+const LUT_DIV = makeLUT(t => { const s = t * 2 - 1; return mix(BASE, s < 0 ? [80, 140, 255] : [255, 150, 60], Math.abs(s)); });
+const LUT_SEQ = makeLUT(t => mix(BASE, [130, 230, 255], Math.sqrt(t)));
+const LUT_NEURON = makeLUT(t => mix(BASE, [255, 220, 90], t));
+
+function drawHeat(canvas, w, h, get, lut) {
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  const img = ctx.createImageData(w, h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const c = lut[get(y, x)], o = (y * w + x) * 4;
+    img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function decode(b64) {
+  const s = atob(b64), a = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i);
+  return a;
+}
+function decoded(snap) {
+  if (!snap.dec) snap.dec = { acts: snap.acts.map(decode), neurons: snap.neurons.map(decode), attn: decode(snap.attn) };
+  return snap.dec;
+}
+
+// ---- static page structure --------------------------------------------------
+const slider = document.getElementById("slider");
+slider.max = snaps.length - 1;
+
+const stageEls = DATA.stages.map(name => {
+  const card = el("div", "card"), wrap = el("div", "rel");
+  const cv = document.createElement("canvas"), hl = el("div", "rowhl");
+  wrap.append(cv, hl); card.append(el("h4", null, name), wrap);
+  document.getElementById("stages").append(card);
+  return { cv, hl };
+});
+
+const headEls = Array.from({ length: H }, (_, hd) => {
+  const card = el("div", "card"), wrap = el("div", "rel");
+  const cv = document.createElement("canvas"), hl = el("div", "rowhl");
+  cv.style.aspectRatio = "1 / 1";
+  wrap.append(cv, hl); card.append(el("h4", null, "head " + (hd + 1)), wrap);
+  document.getElementById("heads").append(card);
+  return { cv, hl };
+});
+
+const layerBtns = Array.from({ length: LAYERS }, (_, l) => {
+  const b = el("button", null, "block " + (l + 1));
+  b.onclick = () => { layer = l; render(); };
+  document.getElementById("layers").append(b);
+  return b;
+});
+
+// ---- one frame ----------------------------------------------------------------
+function render() {
+  const snap = snaps[idx], dec = decoded(snap), T = snap.tokens.length;
+  slider.value = idx;
+  if (sel >= T) sel = T - 1;
+
+  document.getElementById("stats").innerHTML =
+    `token <b>${snap.step}</b> / ${snaps.length - 1} &middot; sequence length <b>${T}</b>`;
+
+  const wrap = document.getElementById("tokwrap");
+  wrap.innerHTML = "";
+  snap.tokens.forEach((tok, i) => {
+    const box = el("div", "tok mono" + (i >= promptLen ? " gen" : "") + (i === sel ? " sel" : ""));
+    box.append(el("div", null, tok || "·"));
+    const hasNext = i < T - 1;
+    const pred = el("div", "pred");
+    if (hasNext) {
+      const ok = snap.topstr[i][0] === snap.tokens[i + 1];
+      pred.textContent = snap.topstr[i][0] || "·";
+      pred.className = "pred " + (ok ? "ok" : "bad");
+    } else {
+      pred.textContent = "…";
+      pred.className = "pred wait";
+    }
+    box.append(pred);
+    box.onclick = () => { sel = i; render(); };
+    wrap.append(box);
+  });
+
+  const guesses = snap.topstr[sel].map((s, k) => `<b class="mono">${s || "·"}</b> ${pct(snap.topp[sel][k])}`).join(" &nbsp;&middot;&nbsp; ");
+  const isLast = sel === T - 1;
+  document.getElementById("info").innerHTML = isLast
+    ? `Position ${sel + 1} (the newest token) - top guesses for what comes next: ${guesses}. The top guess is what gets generated next.`
+    : `After <b class="mono">${snap.tokens[sel] || "·"}</b> (position ${sel + 1}) top guesses: ${guesses}. Actual next token: <b class="mono">${snap.tokens[sel + 1] || "·"}</b>`;
+
+  stageEls.forEach((s, k) => {
+    const a = dec.acts[k];
+    s.cv.style.height = Math.max(T * 4, 40) + "px";
+    drawHeat(s.cv, D, T, (y, x) => a[y * D + x], LUT_DIV);
+    s.hl.style.top = sel / T * 100 + "%";
+    s.hl.style.height = 100 / T + "%";
+  });
+
+  layerBtns.forEach((b, l) => b.classList.toggle("on", l === layer));
+  headEls.forEach((hd, k) => {
+    drawHeat(hd.cv, T, T, (y, x) => dec.attn[((layer * H + k) * T + y) * T + x], LUT_SEQ);
+    hd.hl.style.top = sel / T * 100 + "%";
+    hd.hl.style.height = 100 / T + "%";
+  });
+
+  const ncv = document.getElementById("neuroncv");
+  const nrow = dec.neurons[layer];
+  //the grid is rounded up to fill a rectangle, so a few cells past d_ff-1 don't exist - draw those as off
+  drawHeat(ncv, NCOLS, NROWS, (y, x) => { const i = y * NCOLS + x; return i < nrow.length ? nrow[i] : 0; }, LUT_NEURON);
+}
+
+// ---- controls -----------------------------------------------------------------
+const playBtn = document.getElementById("play");
+function pause() { clearInterval(timer); timer = null; playBtn.textContent = "Play"; }
+function play() {
+  if (idx >= snaps.length - 1) idx = 0;
+  playBtn.textContent = "Pause";
+  timer = setInterval(() => {
+    if (idx >= snaps.length - 1) return pause();
+    idx++; render();
+  }, +document.getElementById("speed").value);
+}
+const toggle = () => timer ? pause() : play();
+playBtn.onclick = toggle;
+document.getElementById("speed").onchange = () => { if (timer) { pause(); play(); } };
+slider.oninput = () => { idx = +slider.value; render(); };
+window.addEventListener("keydown", e => {
+  if (e.key === " ") { e.preventDefault(); toggle(); }
+  if (e.key === "ArrowRight" && idx < snaps.length - 1) { idx++; render(); }
+  if (e.key === "ArrowLeft" && idx > 0) { idx--; render(); }
+});
+window.addEventListener("resize", render);
+
+render();
+</script>
+</body>
+</html>
