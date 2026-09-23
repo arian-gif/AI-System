@@ -1,5 +1,5 @@
-import os
 import urllib.request
+from pathlib import Path
 
 import torch
 import torch.nn.functional as F
@@ -13,15 +13,18 @@ max_steps = 5000
 lr = 5e-4
 eval_every = 250
 save_every = 1000
-probe_len = 32 
+probe_len = 32
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # data: the tiny shakespeare text, one token per character
+#resolved next to this script (not the current working directory), so this works
+#the same whether you run it as `python train.py` or `python transformer/train.py`
 DATA_URL = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
-if not os.path.exists("input.txt"):
-    urllib.request.urlretrieve(DATA_URL, "input.txt")
-text = open("input.txt", encoding="utf-8").read()
+data_path = Path(__file__).with_name("input.txt")
+if not data_path.exists():
+    urllib.request.urlretrieve(DATA_URL, data_path)
+text = data_path.read_text(encoding="utf-8")
 
 vocab = sorted(set(text)) #65 characters
 stoi = {c: i for i, c in enumerate(vocab)}
