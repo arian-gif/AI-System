@@ -31,6 +31,13 @@ inference/       running a pretrained model (GPT-2) and seeing inside it
   infer_naive_compare.py       the same generation without batching, for comparison
   infer_visualize.py            re-runs generation with plain transformers + hooks
   inference_viewer_template.html the viewer infer_visualize.py fills in
+
+cuda/            learning to write GPU kernels in CUDA C++ (in progress)
+  vector_add.cu                your first kernel: one thread per element
+  softmax.cu                    softmax with one thread per row
+  softmax_complex.cu             softmax with a block of threads cooperating on a row
+  Makefile                        build helper (its wildcards still expect subfolders,
+                                   so compile with nvcc directly for now)
 ```
 
 ## Training the transformer
@@ -62,8 +69,30 @@ be compared directly - the gap between their tok/s numbers is what vLLM's
 continuous batching and PagedAttention KV cache are actually buying you, which
 a single-prompt call never shows.
 
-## Next: CUDA
+## CUDA (in progress)
 
-The natural follow-up here is writing a custom CUDA kernel for the attention
-block (`MultiHeadAttentionBlock.attention` in `transformer/model.py`) and
-benchmarking it against PyTorch's built-in implementation.
+The goal is to understand what happens below PyTorch: how one attention or
+matmul call ends up as threads running on a GPU. The kernels here are small and
+written to be read, not to be fast yet.
+
+```bash
+nvcc -arch=sm_75 cuda/vector_add.cu -o vector_add && ./vector_add
+nvcc -arch=sm_75 cuda/softmax.cu -o softmax && ./softmax
+nvcc -arch=sm_75 cuda/softmax_complex.cu -o softmax_complex && ./softmax_complex
+```
+These need `nvcc` and an NVIDIA GPU, so they're written for a Google Colab T4
+(`sm_75` is the T4's architecture, change it for other GPUs).
+
+- **`vector_add.cu`** covers the basics: a kernel, the `<<<blocks, threads>>>`
+  launch, and how each thread works out its own element from `threadIdx`,
+  `blockIdx` and `blockDim`.
+- **`softmax.cu`** is the softmax from attention (max, then exp, then divide by
+  the sum) with one thread doing a whole row.
+- **`softmax_complex.cu`** does the same with a block of threads sharing one row
+  through shared memory, and prints the reduction step by step so you can watch
+  the partial results combine.
+
+**Next:** time softmax on a large matrix, then naive vs tiled matrix multiply,
+then a custom attention kernel to benchmark against PyTorch's
+(`MultiHeadAttentionBlock.attention` in `transformer/model.py`), and a
+`torch.profiler` run on GPT-2 to see which kernels PyTorch actually launches.
